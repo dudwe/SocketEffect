@@ -18,15 +18,21 @@ using namespace std;
 
 class PrivacyFilterEffect : public VideoEffect {
   //Establish Conneciton with python server
+
+  //We have 2 segnet servers
+  
   int sock,valread;
   int i = 0;
   struct sockaddr_in server;
   char recv_buffer[4096] = {NULL};
- public:
-
   
-  void effectEnabled(){
+  int frame_number;
+  int frame_skip=5;
+  Mat mask;
 
+ public:
+  void effectEnabled(){
+    frame_number = 0;
     printf("EFFECT ENEABLED\n");
     //Create socket
     sock = socket(AF_INET,SOCK_STREAM,0);
@@ -46,101 +52,105 @@ class PrivacyFilterEffect : public VideoEffect {
     }
       
   }
-  void effectDsiabled(){
+  void effectDisabled(){
     //Close connection with python server
+    printf("Effect Disabled! Closing socket connections\n");
+    close(sock);
   }
 
 
   
   void applyEffect(const SourceFrame& original, cv::Mat& frame) override
   {
-    //send data to the server
-    Mat send_frame;
 
-    //Resize the frame to 128 by 128
-    resize(frame,send_frame,cv::Size(128,128));
+    if(frame_number % frame_skip == 0){
+      //send data to the server
+      Mat send_frame;
 
-    //Convert frame to base64 format
-    string encoded_string;
+      //Resize the frame to 128 by 128
+      resize(frame,send_frame,cv::Size(128,128));
 
-    uchar *send_buffer = send_frame.data;
-    auto base64_send = reinterpret_cast<const unsigned char*>(send_frame.data);
-    encoded_string = base64_encode(base64_send,send_frame.total() *3);
-
-    //Add header to the string with padding
-    int size = encoded_string.length();
-    string header = to_string(size);
-    int spaces = header.length();
-    for(int i = spaces;i<10;i++){
-      header+=' ';
-    }
-
-    //Add header to the data
-    encoded_string = header + encoded_string;
-
-    //Send image to python server
-    send(sock,encoded_string.c_str(),encoded_string.length(),0);
-
-    //Receive mask and apply to image
-    string recv_msg;
-    bool new_msg = true;
-    int msglen;
-
-    while(true){
-      //Empty the buffer
-      recv_buffer[4096] = {NULL};
-      //Recv data into the buffer
-      valread = read(sock,recv_buffer,4096);
-
-      //Extract header if first packet
-      if(new_msg){
-	string packet_header;
-        for(i=0;i<10;i++){
-	  if(recv_buffer[i]==' '){
-	    break;
-	  }
-	  packet_header+=recv_buffer[i];
-	}     
-	
-	msglen = stoi(packet_header);
-	new_msg = false;
-      }
-      //Add data to the recv_msg string
-      recv_msg += recv_buffer;
-      if(recv_msg.length()-10>=msglen){
-	printf("Received image from server\n");
-	break;
-      }
-    }
-
-    //Recreate the mask from the base64 string received from the server
-    //Trim the header
-    recv_msg = recv_msg.erase(0,10);
-    //Trim the end
-    recv_msg = recv_msg.substr(0,msglen);
-    //Decode image to byte string
-    std::string decoded_data = base64_decode(recv_msg);
-    //Convert to uchar vector
-    std::vector<uchar> data(decoded_data.begin(), decoded_data.end());
-    //Cast this to  matrix
-    Mat recv_img(128, 128, CV_8UC1, data.data());
-
-
-    //Resize mask to video dimensions
-    Mat mask;
-    resize(recv_img,mask,cv::Size(1280,720));
-
-    //Post Process the mask
-    //Erode the mask and dilate with a 10x10 kernel
-    //Erode
-    erode(mask,mask, getStructuringElement(MORPH_RECT, Size(10, 10)));
-    //Dilate
-    dilate(mask,mask, getStructuringElement(MORPH_RECT, Size(15, 15)));
-    //Fill Holes in mask
-    morphologyEx(mask,mask,MORPH_CLOSE,getStructuringElement(MORPH_RECT, Size(50, 50)));
-    //Remove artifacts
-    morphologyEx(mask,mask,MORPH_OPEN,getStructuringElement(MORPH_RECT, Size(50, 50)));
+      //Convert frame to base64 format
+      string encoded_string;
+      
+      uchar *send_buffer = send_frame.data;
+      auto base64_send = reinterpret_cast<const unsigned char*>(send_frame.data);
+      encoded_string = base64_encode(base64_send,send_frame.total() *3);
     
+      //Add header to the string with padding
+      int size = encoded_string.length();
+      string header = to_string(size);
+      int spaces = header.length();
+      for(int i = spaces;i<10;i++){
+	header+=' ';
+      }
+      
+      //Add header to the data
+      encoded_string = header + encoded_string;
+      
+      //Send image to python server
+      send(sock,encoded_string.c_str(),encoded_string.length(),0);
+
+      //Receive mask and apply to image
+      string recv_msg;
+      bool new_msg = true;
+      int msglen;
+    
+      while(true){
+	//Empty the buffer
+	recv_buffer[4096] = {NULL};
+	//Recv data into the buffer
+	valread = read(sock,recv_buffer,4096);
+	
+	//Extract header if first packet
+	if(new_msg){
+	  string packet_header;
+	  for(i=0;i<10;i++){
+	    if(recv_buffer[i]==' '){
+	      break;
+	    }
+	    packet_header+=recv_buffer[i];
+	  }     
+	
+	  msglen = stoi(packet_header);
+	  new_msg = false;
+	}
+	//Add data to the recv_msg string
+	recv_msg += recv_buffer;
+	if(recv_msg.length()-10>=msglen){
+	  printf("Received image from server\n");
+	  break;
+	}
+      }
+
+      //Recreate the mask from the base64 string received from the server
+      //Trim the header
+      recv_msg = recv_msg.erase(0,10);
+      //Trim the end
+      recv_msg = recv_msg.substr(0,msglen);
+      //Decode image to byte string
+      std::string decoded_data = base64_decode(recv_msg);
+      //Convert to uchar vector
+      std::vector<uchar> data(decoded_data.begin(), decoded_data.end());
+      //Cast this to  matrix
+      Mat recv_img(128, 128, CV_8UC1, data.data());
+
+
+      //Resize mask to video dimensions
+      
+      resize(recv_img,mask,cv::Size(1280,720));
+      
+      //Post Process the mask
+      //Erode the mask and dilate with a 10x10 kernel
+      //Erode
+      erode(mask,mask, getStructuringElement(MORPH_RECT, Size(10, 10)));
+      //Dilate
+      dilate(mask,mask, getStructuringElement(MORPH_RECT, Size(15, 15)));
+      //Fill Holes in mask
+      morphologyEx(mask,mask,MORPH_CLOSE,getStructuringElement(MORPH_RECT, Size(50, 50)));
+      //Remove artifacts
+      morphologyEx(mask,mask,MORPH_OPEN,getStructuringElement(MORPH_RECT, Size(50, 50)));
+    }
     //Apply mask as blurring mask to the video
     Mat blurMask;
     GaussianBlur(frame,blurMask,Size(25,25),1000,1000);
@@ -150,7 +160,8 @@ class PrivacyFilterEffect : public VideoEffect {
     bitwise_not(255*mask,mask_inv);
     
     blurMask.copyTo(frame,mask_inv);
-    
+
+    frame_number++;
   }  
 };
 

@@ -8,40 +8,22 @@ s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
 
 s.connect((socket.gethostname(),1234))
 
-
-
-
-
-
 while True:
-
-
-
     #Send image to server
     img = cv2.imread('greggs.jpg')
     #Resize the image
     img = cv2.resize(img,(128,128))
     #Convert image to string
     img_str = base64.b64encode(img)
-    
-
-
-
     #Send image as string to client
-
     img_str = f'{len(img_str):<{HEADERSIZE}}'+img_str.decode("utf-8")
-    
-
     #s.send(img_str)
     s.send(bytes(img_str,"utf-8"))
-
-
 
     full_msg = ''
     new_msg = True
 
     #recv data from server
-
     while True:
         msg = s.recv(4096)
         if(new_msg):

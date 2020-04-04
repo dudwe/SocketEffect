@@ -1,3 +1,4 @@
+import time
 import sys
 import socket
 import base64
@@ -59,7 +60,7 @@ def main(loaded_model,s,ip='127.0.0.1',port=8080):
                 #If nothing, the session has been closed and we make a new one
                 if(len(msg)==0):
                     return
-                #print(f"Client message length: {msg[:HEADERSIZE]}")
+                print(f"Client message length: {msg[:HEADERSIZE]}")
                 msglen = int(msg[:HEADERSIZE])
                 new_msg = False
                 
@@ -78,6 +79,10 @@ def main(loaded_model,s,ip='127.0.0.1',port=8080):
         
         #Reshape
         img_data = np.reshape(img_data,(128,128,3))
+
+
+
+        
         img_data = tf.image.convert_image_dtype(img_data,dtype=tf.float32,saturate=False)
         
         res = loaded_model.predict(np.array([np.array(img_data)]))[0]
@@ -91,13 +96,20 @@ def main(loaded_model,s,ip='127.0.0.1',port=8080):
         res  = res.astype('uint8')
         
         #Convert image to string
+        #cv2.imshow("Image",np.array(res))
+        #cv2.waitKey(0)
+        
         
         img_str = base64.b64encode(res)
         
+        #print(img_str)
+        
         #Send image as string to client
         img_str = f'{len(img_str):<{HEADERSIZE}}'+img_str.decode("utf-8")
-    
-        clientsocket.send(bytes(img_str,"utf-8"))
+
+        #print(img_str)
+        #time.sleep(5)
+        clientsocket.sendall(bytes(img_str,"utf-8"))
 
 
 if __name__ == "__main__":

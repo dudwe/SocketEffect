@@ -5,6 +5,9 @@
 #ifndef RNG_STREAMING_BACKEND__EXAMPLEEFFECTS_H_
 #define RNG_STREAMING_BACKEND__EXAMPLEEFFECTS_H_
 
+#include "opencv2/objdetect.hpp"
+
+
 #include "VideoEffect.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -36,6 +39,7 @@ class PrivacyFilterEffect : public VideoEffect {
   
   int frame_number;
   Mat mask;
+  int distance =0;
 
  public:
   void effectEnabled(){
@@ -79,19 +83,19 @@ class PrivacyFilterEffect : public VideoEffect {
   }
 
 
-  
+  int sock_loc = 0;  
   void applyEffect(const SourceFrame& original, cv::Mat& frame) override
   {
     
     //printf("Received image from server Frame Number %d\n",frame_number);
     if(frame_number % FRAME_SKIP == 0){
-      int sock_loc;
+      /*
       if(frame_number % 2 == 0){
 	sock_loc = 0;
       }else{
 	sock_loc = 1;
       }
-      
+      */
       //send data to the server
       Mat send_frame;
 
@@ -174,9 +178,21 @@ class PrivacyFilterEffect : public VideoEffect {
       std::vector<uchar> data(decoded_data.begin(), decoded_data.end());
       //Cast this to  matrix
       Mat recv_img(128, 128, CV_8UC1, data.data());
+
+      //Estimate distance based on number of pixels in mask
+      double sum_val = sum(recv_img)[0];
+      if(sum_val/(128*128) < 0.4){
+	//Use general segnet
+	sock_loc = 1;
+	printf("Use far\n");
+      }else{
+	//use close range segnet
+	sock_loc = 0;
+	printf("Use close close\n");
+      }
       
+
       //Resize mask to video dimensions
-      
       resize(recv_img,mask,cv::Size(1280,720));
       
       //Post Process the mask

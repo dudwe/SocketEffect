@@ -190,17 +190,28 @@ class PrivacyFilterEffect : public VideoEffect {
 
       //Resize mask to video dimensions
       resize(recv_img,mask,cv::Size(1280,720));
-      
+      /*
+      namedWindow( "Before", WINDOW_AUTOSIZE );// Create a window for display.
+      imshow( "Before", frame );                   // Show our image inside it.
+      waitKey(0);    
+      */
       //Post Process the mask
       //Erode the mask and dilate with a 10x10 kernel
       //Erode
       erode(mask,mask, getStructuringElement(MORPH_RECT, Size(10, 10)));
       //Dilate
-      dilate(mask,mask, getStructuringElement(MORPH_RECT, Size(15, 15)));
+      dilate(mask,mask, getStructuringElement(MORPH_RECT, Size(30, 30)));
       //Fill Holes in mask
       morphologyEx(mask,mask,MORPH_CLOSE,getStructuringElement(MORPH_RECT, Size(50, 50)));
       //Remove artifacts
+
+      /*
       morphologyEx(mask,mask,MORPH_OPEN,getStructuringElement(MORPH_RECT, Size(50, 50)));
+      namedWindow( "Mask", WINDOW_AUTOSIZE );// Create a window for display.
+      imshow( "Mask", mask *255);                   // Show our image inside it.
+      waitKey(0);    
+      */
+      
     }
     //Apply mask as blurring mask to the video
     Mat blurMask;

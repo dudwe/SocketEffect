@@ -35,11 +35,6 @@ def start_server(ip='127.0.0.1',port=8080):
     
 def main(loaded_model,s,ip='127.0.0.1',port=8080):
 
-
-
-
-    
-
     #Move conn up for continous strea
     
     #clientsocket,address = s.accept()

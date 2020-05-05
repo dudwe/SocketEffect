@@ -1,6 +1,7 @@
 
 #include "ExampleEffects.h"
 #include "VideoEffect.h"
+
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -10,7 +11,7 @@
 
 
 #define FRAME_SIZE 128
-#define FRAME_SKIP 5
+#define FRAME_SKIP 3
 #define BUFFER_SIZE 4096
 
 using namespace cv;
@@ -40,8 +41,13 @@ class ROIPrivacyFilterEffect : public VideoEffect {
  public:
 
   std::unique_ptr<FaceBlurring> tracker;
+
+  ROIPrivacyFilterEffect(){
+    tracker = std::make_unique<FaceBlurring>();
+  }
   
   void effectEnabled(){
+    
     frame_number = 0;
     printf("EFFECT ENEABLED\n");
 
@@ -74,12 +80,10 @@ class ROIPrivacyFilterEffect : public VideoEffect {
     }
 
     //Init the Face Tracker
-    tracker = std::make_unique<FaceBlurring>();
+    //tracker = std::make_unique<FaceBlurring>();
 
     //Init counter
     frame_number = 0;
-
-
   }
   
   void effectDisabled(){
@@ -97,14 +101,13 @@ class ROIPrivacyFilterEffect : public VideoEffect {
 
     tracker->processFrame(original);
     tracker->facesScaling(original,frame);
+
     
     if(frame_number % FRAME_SKIP == 0){
 
       
       Scalar color = Scalar(0, 255, 0);
-      
-
-      
+            
       //Init the global maskm
       global_mask = Mat::zeros(cv::Size(1280, 720), CV_8UC1);
       for (int i : tracker->index) {
@@ -120,7 +123,7 @@ class ROIPrivacyFilterEffect : public VideoEffect {
 	Rect roi_bbox;
 	if(roi_size/(frame.rows * frame.cols) < 0.05){
 	  printf("Far away \n");
-	  sock_loc = 1;
+	  sock_loc = 1;	  
 	  roi_bbox = extendBox(current_bbox,1);
 	}else{
 	  printf("Close \n");
@@ -128,24 +131,52 @@ class ROIPrivacyFilterEffect : public VideoEffect {
 	  roi_bbox = extendBox(current_bbox,0);
 	}
 
-
-
-
 	//Extract the roi
+	//Mat expand_roi = frame(current_bbox);
 	Mat expand_roi = frame(roi_bbox);
 
-	//Get segmentation mask for ROI
+	//Get segmentation mask for ROI   
 	Mat recv_img = sendAndReceive(expand_roi,sock_loc);
 
-
 	//Debug rect
-	rectangle(frame, roi_bbox, Scalar(255,0,0), 5, 8);
+	//rectangle(frame, roi_bbox, Scalar(255,0,0), 5, 8);
 
-	//Copy the segmask
-	recv_img.copyTo(global_mask(roi_bbox));
+	//Copy the segmask to a empty frame
+	Mat tmp_mask = Mat::zeros(cv::Size(1280,720),CV_8UC1);
+	recv_img.copyTo(tmp_mask(roi_bbox));
+
+
+
+
+	//Or the frame with global
+        global_mask = global_mask | tmp_mask;
+
+
+
+        //recv_img.copyTo(global_mask(roi_bbox));
+	Mat dst;
+	Mat greyMat;
+	cv::cvtColor(expand_roi, greyMat, CV_BGR2GRAY);
+	hconcat(greyMat,recv_img*255,dst);
+	
+	namedWindow( "ROI", WINDOW_AUTOSIZE );// Create a window for display.
+	imshow( "ROI", dst );                   // Show our image inside it.
+	waitKey(0);
+
       }
     }
+
+    
+
+    
+    namedWindow( "Global mask", WINDOW_AUTOSIZE );// Create a window for display.
+    imshow( "Global mask", global_mask *255  );                   // Show our image inside it.
+
+
+    
+    
     //Apply gaussian blur to frame
+    
     Mat blurMask;
     GaussianBlur(frame,blurMask,Size(25,25),1000,1000);
 
@@ -154,7 +185,35 @@ class ROIPrivacyFilterEffect : public VideoEffect {
     bitwise_not(255*global_mask,mask_inv);
     
     blurMask.copyTo(frame,mask_inv);
+
+
+    
+    //Draw rects
+    for (int i : tracker->index) {
+	Rect current_bbox = tracker->facesScaled[i];
+	//rectangle(frame, tracker->facesScaled[i], color, 5, 8);
+	Mat roi = frame(current_bbox);
+      
+	//Get the size of the roi
+	double roi_size = roi.rows * roi.cols;
+
+	//Generate ROI bbox
+	Rect roi_bbox;
+	if(roi_size/(frame.rows * frame.cols) < 0.05){
+	  printf("Far away \n");
+	  sock_loc = 1;	  
+	  roi_bbox = extendBox(current_bbox,1);
+	}else{
+	  printf("Close \n");
+	  sock_loc = 0;
+	  roi_bbox = extendBox(current_bbox,0);
+	}
+	rectangle(frame, roi_bbox, Scalar(255,0,0), 5, 8);
+    }
+
+    
     frame_number++;
+    
   }
 
   Rect extendBox(cv::Rect &bbox,int scale_factor){
@@ -172,7 +231,7 @@ class ROIPrivacyFilterEffect : public VideoEffect {
       //Shift box left by 2.5 width
       bbox = bbox - Point((2*bbox.width) + bbox.width/2,0);
       //Expand box by factor of 6.5
-      bbox += cv::Size(bbox.width*6.5,bbox.height*6.5);
+      bbox += cv::Size(bbox.width*7.5,bbox.height*7.5);
     }
     //Is the top left coord in frame?
     //is the bot right coord in frame?
@@ -198,7 +257,7 @@ class ROIPrivacyFilterEffect : public VideoEffect {
       new_tl.y = bbox.tl().y;
     }
 
-    //cout <<"New_cord tl "<< new_tl.x<<"," << new_tl.y << "\n";
+    cout <<"New_cord tl "<< new_tl.x<<"," << new_tl.y << "\n";
 
     Point new_br;
     if(bbox.br().x<0){
@@ -216,14 +275,15 @@ class ROIPrivacyFilterEffect : public VideoEffect {
     }else{
       new_br.y = bbox.br().y;
     }
-    //cout <<"New_cord br "<< new_br.x<<"," << new_br.y << "\n";
+    cout <<"New_cord br "<< new_br.x<<"," << new_br.y << "\n";
 
     return Rect(new_tl,new_br);
+    
   }
 
 
   Mat sendAndReceive(Mat roi,int sock_loc){
-          //Resize the frame to 128 by 128
+    //Resize the frame to 128 by 128
     Mat send_frame;
     resize(roi,send_frame,cv::Size(FRAME_SIZE,FRAME_SIZE));
     //Convert frame to base64 format
@@ -252,7 +312,10 @@ class ROIPrivacyFilterEffect : public VideoEffect {
     bool new_msg = true;
     int msglen;
     int current_length=0;
+
+    printf("Send data \n");
     while(true){
+
       char recv_buffer[BUFFER_SIZE];
       //Empty the buffer
       //Recv data into the buffer
@@ -293,6 +356,7 @@ class ROIPrivacyFilterEffect : public VideoEffect {
 	}	
       }
     }
+    printf("RECV data \n");
     //Reconstruct the mask
 
     //Decode image to byte string
